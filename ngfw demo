@@ -1,0 +1,721 @@
+"""
+================================================================================
+STRATA COPILOT - NGFW AI ASSISTANT DEMO
+================================================================================
+Single-file standalone demo showcasing Strata Copilot's natural language
+capabilities for NGFW management, powered by Precision AI.
+
+INSTALLATION:
+1. Install Python 3.8+ if not already installed
+2. Install dependencies:
+   pip install streamlit pandas
+
+RUN:
+   streamlit run STRATA_COPILOT_DEMO_STANDALONE.py
+
+The demo will open in your browser at http://localhost:8501
+
+FEATURES:
+- Natural language policy creation and modification
+- Alert explanation and threat analysis
+- Configuration troubleshooting
+- Proactive insights and best practice assessments
+- Visual dashboards and security metrics
+
+DEMO SCENARIOS (Under 12 minutes):
+1. Policy Creation (2 min): Generate App-ID rules from natural language
+2. Threat Analysis (3 min): Explain threat logs and show C2 patterns
+3. Troubleshooting (3 min): Diagnose connectivity issues
+4. Proactive Insights (2 min): Review best practices and recommendations
+5. Executive Overview (2 min): Show metrics and persona workflows
+
+================================================================================
+"""
+
+from datetime import datetime
+from typing import Dict, List, Optional
+import pandas as pd
+import streamlit as st
+
+
+# ============================================================================
+# SYNTHETIC NGFW DATA MODELS
+# ============================================================================
+@st.cache_data
+def load_threat_logs() -> pd.DataFrame:
+    """Synthetic threat logs from NGFW telemetry."""
+    data = [
+        {
+            "Log ID": "TH-2025-11-16-001",
+            "Timestamp": "2025-11-16 14:23:15 UTC",
+            "Severity": "Critical",
+            "Threat Type": "Command and Control (C2)",
+            "Source IP": "203.0.113.45",
+            "Destination IP": "10.0.5.12",
+            "Application": "Unknown-TCP",
+            "Action": "blocked",
+            "Profile": "Security Profile: default",
+            "Rule": "allow-internet",
+            "User": "svc-devops",
+            "Description": "C2 beacon detected: suspicious outbound connection pattern to known C2 infrastructure",
+            "False Positive": False,
+        },
+        {
+            "Log ID": "TH-2025-11-16-002",
+            "Timestamp": "2025-11-16 13:47:32 UTC",
+            "Severity": "High",
+            "Threat Type": "Malware",
+            "Source IP": "198.51.100.22",
+            "Destination IP": "10.0.3.8",
+            "Application": "HTTP",
+            "Action": "blocked",
+            "Profile": "Security Profile: strict",
+            "Rule": "allow-web",
+            "User": "user-marketing",
+            "Description": "Malware signature match: Trojan.Generic detected in HTTP payload",
+            "False Positive": False,
+        },
+        {
+            "Log ID": "TH-2025-11-16-003",
+            "Timestamp": "2025-11-16 12:15:08 UTC",
+            "Severity": "Medium",
+            "Threat Type": "Spyware",
+            "Source IP": "10.0.2.15",
+            "Destination IP": "192.0.2.100",
+            "Application": "SSL",
+            "Action": "blocked",
+            "Profile": "Security Profile: default",
+            "Rule": "allow-outbound",
+            "User": "user-sales",
+            "Description": "Spyware communication attempt blocked by WildFire analysis",
+            "False Positive": True,
+        },
+        {
+            "Log ID": "TH-2025-11-16-004",
+            "Timestamp": "2025-11-16 11:32:44 UTC",
+            "Severity": "Critical",
+            "Threat Type": "Command and Control (C2)",
+            "Source IP": "10.0.4.20",
+            "Destination IP": "203.0.113.78",
+            "Application": "Unknown-TCP",
+            "Action": "blocked",
+            "Profile": "Security Profile: default",
+            "Rule": "allow-internet",
+            "User": "svc-backup",
+            "Description": "C2 beacon pattern: repeated connection attempts to suspicious domain",
+            "False Positive": False,
+        },
+        {
+            "Log ID": "TH-2025-11-16-005",
+            "Timestamp": "2025-11-16 10:18:22 UTC",
+            "Severity": "High",
+            "Threat Type": "Virus",
+            "Source IP": "198.51.100.45",
+            "Destination IP": "10.0.1.5",
+            "Application": "FTP",
+            "Action": "blocked",
+            "Profile": "Security Profile: strict",
+            "Rule": "allow-file-transfer",
+            "User": "user-engineering",
+            "Description": "Virus detected: Win32.Malware.Generic in FTP transfer",
+            "False Positive": False,
+        },
+    ]
+    return pd.DataFrame(data)
+
+
+@st.cache_data
+def load_policies() -> List[Dict]:
+    """Current NGFW security policies."""
+    return [
+        {
+            "Rule Name": "allow-internet",
+            "Source Zone": "internal",
+            "Destination Zone": "internet",
+            "Source Address": "10.0.0.0/8",
+            "Destination Address": "any",
+            "Application": "any",
+            "Service": "application-default",
+            "Action": "allow",
+            "Profile": "Security Profile: default",
+            "Log Setting": "log-at-session-start",
+            "Description": "Allow all internal traffic to internet",
+            "Best Practice Violations": ["Overly permissive: 'any' application", "Missing App-ID restrictions"],
+        },
+        {
+            "Rule Name": "allow-web",
+            "Source Zone": "internal",
+            "Destination Zone": "dmz",
+            "Source Address": "10.0.3.0/24",
+            "Destination Address": "dmz-web-servers",
+            "Application": "web-browsing,ssl",
+            "Service": "application-default",
+            "Action": "allow",
+            "Profile": "Security Profile: strict",
+            "Log Setting": "log-at-session-start",
+            "Description": "Allow marketing subnet to DMZ web servers",
+            "Best Practice Violations": [],
+        },
+        {
+            "Rule Name": "allow-outbound",
+            "Source Zone": "internal",
+            "Destination Zone": "internet",
+            "Source Address": "10.0.2.0/24",
+            "Destination Address": "any",
+            "Application": "any",
+            "Service": "application-default",
+            "Action": "allow",
+            "Profile": "Security Profile: default",
+            "Log Setting": "log-at-session-start",
+            "Description": "Allow sales subnet outbound access",
+            "Best Practice Violations": ["Overly permissive: 'any' application", "Should use App-ID filtering"],
+        },
+        {
+            "Rule Name": "allow-file-transfer",
+            "Source Zone": "internal",
+            "Destination Zone": "internet",
+            "Source Address": "10.0.1.0/24",
+            "Destination Address": "any",
+            "Application": "ftp",
+            "Service": "application-default",
+            "Action": "allow",
+            "Profile": "Security Profile: strict",
+            "Log Setting": "log-at-session-start",
+            "Description": "Allow engineering FTP access",
+            "Best Practice Violations": ["FTP should be replaced with SFTP for security"],
+        },
+    ]
+
+
+@st.cache_data
+def load_config_issues() -> List[Dict]:
+    """Configuration troubleshooting scenarios."""
+    return [
+        {
+            "Issue": "Marketing zone users can't access Salesforce",
+            "Symptoms": ["Connection timeouts", "SSL handshake failures"],
+            "Root Cause": "Decryption policy blocking Salesforce SSL traffic",
+            "Affected Rule": "allow-web",
+            "Fix": "Add Salesforce to decryption exclusion list or adjust decryption profile",
+            "Impact": "High - 45 users affected",
+        },
+        {
+            "Issue": "Slow performance on dev subnet",
+            "Symptoms": ["High latency", "Session timeouts"],
+            "Root Cause": "Decryption performance bottleneck on PA-220",
+            "Affected Rule": "allow-internet",
+            "Fix": "Optimize decryption settings or offload to PA-5400 series",
+            "Impact": "Medium - 12 users affected",
+        },
+        {
+            "Issue": "NAT translation failing for DMZ servers",
+            "Symptoms": ["External users can't reach web servers"],
+            "Root Cause": "NAT rule order conflict - more specific rule missing",
+            "Affected Rule": "NAT: dmz-inbound",
+            "Fix": "Reorder NAT rules or add explicit NAT rule for DMZ",
+            "Impact": "Critical - External access down",
+        },
+    ]
+
+
+BEST_PRACTICE_VIOLATIONS = [
+    {
+        "Violation": "Overly permissive application: 'any'",
+        "Rule": "allow-internet",
+        "Severity": "High",
+        "Recommendation": "Replace with specific App-IDs (web-browsing, ssl, etc.)",
+        "Impact": "Increases attack surface - allows unknown applications",
+    },
+    {
+        "Violation": "Missing App-ID restrictions",
+        "Rule": "allow-internet",
+        "Severity": "Medium",
+        "Recommendation": "Enable App-ID for better visibility and control",
+        "Impact": "Reduces visibility into application usage",
+    },
+    {
+        "Violation": "FTP should be replaced with SFTP",
+        "Rule": "allow-file-transfer",
+        "Severity": "Medium",
+        "Recommendation": "Migrate to SFTP (SSH-based) for encrypted file transfer",
+        "Impact": "FTP transmits credentials in plaintext",
+    },
+]
+
+
+# ============================================================================
+# POLICY GENERATION ENGINE
+# ============================================================================
+def generate_policy_from_nl(prompt: str) -> Dict:
+    """Generate NGFW policy from natural language prompt."""
+    prompt_lower = prompt.lower()
+    
+    if "github" in prompt_lower and "developer" in prompt_lower:
+        return {
+            "rule_name": "allow-dev-github",
+            "source_zone": "internal",
+            "destination_zone": "internet",
+            "source_address": "10.0.5.0/24",
+            "destination_address": "github.com",
+            "application": "github,ssl,web-browsing",
+            "service": "application-default",
+            "action": "allow",
+            "profile": "Security Profile: strict",
+            "log_setting": "log-at-session-start",
+            "explanation": "App-ID based rule restricts developers to GitHub, SSL, and web browsing only. Blocks other web traffic as requested. Uses App-ID instead of ports for better security and visibility.",
+            "xml_config": """<entry name="allow-dev-github">
+    <from>
+        <member>internal</member>
+    </from>
+    <to>
+        <member>internet</member>
+    </to>
+    <source>
+        <member>10.0.5.0/24</member>
+    </source>
+    <destination>
+        <member>github.com</member>
+    </destination>
+    <application>
+        <member>github</member>
+        <member>ssl</member>
+        <member>web-browsing</member>
+    </application>
+    <service>application-default</service>
+    <action>allow</action>
+    <profile-setting>
+        <profiles>
+            <security>
+                <member>Security Profile: strict</member>
+            </security>
+        </profiles>
+    </profile-setting>
+    <log-setting>log-at-session-start</log-setting>
+</entry>""",
+        }
+    elif "salesforce" in prompt_lower:
+        return {
+            "rule_name": "allow-salesforce-access",
+            "source_zone": "internal",
+            "destination_zone": "internet",
+            "source_address": "10.0.3.0/24",
+            "destination_address": "salesforce.com",
+            "application": "salesforce,ssl",
+            "service": "application-default",
+            "action": "allow",
+            "profile": "Security Profile: strict",
+            "log_setting": "log-at-session-start",
+            "explanation": "App-ID based rule for Salesforce access. Includes SSL for secure connections. Consider adding decryption exclusion if SSL inspection causes issues.",
+            "xml_config": """<entry name="allow-salesforce-access">
+    <from>
+        <member>internal</member>
+    </from>
+    <to>
+        <member>internet</member>
+    </to>
+    <source>
+        <member>10.0.3.0/24</member>
+    </source>
+    <destination>
+        <member>salesforce.com</member>
+    </destination>
+    <application>
+        <member>salesforce</member>
+        <member>ssl</member>
+    </application>
+    <service>application-default</service>
+    <action>allow</action>
+    <profile-setting>
+        <profiles>
+            <security>
+                <member>Security Profile: strict</member>
+            </security>
+        </profiles>
+    </profile-setting>
+    <log-setting>log-at-session-start</log-setting>
+</entry>""",
+        }
+    else:
+        return {
+            "rule_name": "generated-rule-001",
+            "source_zone": "internal",
+            "destination_zone": "internet",
+            "source_address": "10.0.0.0/8",
+            "destination_address": "any",
+            "application": "web-browsing,ssl",
+            "service": "application-default",
+            "action": "allow",
+            "profile": "Security Profile: default",
+            "log_setting": "log-at-session-start",
+            "explanation": "Generated policy based on your request. Review and modify as needed. Uses App-ID for better security than port-based rules.",
+            "xml_config": "<entry name=\"generated-rule-001\">...</entry>",
+        }
+
+
+# ============================================================================
+# ALERT ANALYSIS ENGINE
+# ============================================================================
+def explain_threat_log(log_id: str, logs_df: pd.DataFrame) -> Dict:
+    """Explain a threat log in plain English."""
+    log = logs_df[logs_df["Log ID"] == log_id]
+    if log.empty:
+        return {"error": "Log not found"}
+    
+    log_row = log.iloc[0]
+    
+    explanation = {
+        "log_id": log_id,
+        "summary": f"A {log_row['Threat Type']} threat was {log_row['Action']} by your NGFW.",
+        "what_happened": f"At {log_row['Timestamp']}, the firewall detected {log_row['Description']}. "
+                        f"The connection from {log_row['Source IP']} to {log_row['Destination IP']} "
+                        f"was blocked by the '{log_row['Profile']}' security profile.",
+        "threat_details": {
+            "Type": log_row['Threat Type'],
+            "Severity": log_row['Severity'],
+            "Application": log_row['Application'],
+            "User": log_row['User'],
+            "Rule": log_row['Rule'],
+        },
+        "false_positive_check": "This appears to be a legitimate threat" if not log_row['False Positive'] else "This may be a false positive - consider reviewing the security profile settings.",
+        "remediation": [
+            f"Verify if {log_row['Source IP']} is a legitimate internal host",
+            f"Review security profile '{log_row['Profile']}' settings - consider tightening if needed",
+            f"Check if user '{log_row['User']}' should have access to {log_row['Application']}",
+            "Enable WildFire for enhanced threat detection",
+        ] if not log_row['False Positive'] else [
+            "Review security profile to reduce false positives",
+            "Consider adding exception for this application pattern",
+        ],
+        "pattern_analysis": f"Similar {log_row['Threat Type']} threats have been detected {2 if log_row['Severity'] == 'Critical' else 1} times in the past week.",
+    }
+    
+    return explanation
+
+
+# ============================================================================
+# TROUBLESHOOTING ENGINE
+# ============================================================================
+def troubleshoot_issue(query: str, issues: List[Dict]) -> Optional[Dict]:
+    """Diagnose configuration issues from natural language."""
+    query_lower = query.lower()
+    
+    for issue in issues:
+        if any(term in query_lower for term in issue["Issue"].lower().split()):
+            return {
+                "issue": issue["Issue"],
+                "diagnosis": f"Root cause identified: {issue['Root Cause']}",
+                "symptoms": issue["Symptoms"],
+                "affected_rule": issue["Affected Rule"],
+                "fix_steps": [
+                    f"1. Navigate to Policies > Security Rules",
+                    f"2. Locate rule: {issue['Affected Rule']}",
+                    issue["Fix"],
+                    "3. Commit changes",
+                    "4. Verify connectivity",
+                ],
+                "impact": issue["Impact"],
+                "one_click_remediation": f"Strata Copilot can auto-apply: {issue['Fix']}",
+            }
+    
+    if "salesforce" in query_lower or "can't access" in query_lower:
+        return {
+            "issue": "Connectivity issue detected",
+            "diagnosis": "Possible causes: decryption policy, NAT configuration, or security rule blocking",
+            "symptoms": ["Connection timeouts", "SSL handshake failures"],
+            "affected_rule": "allow-web (or decryption policy)",
+            "fix_steps": [
+                "1. Check decryption policy - add Salesforce to exclusion list if needed",
+                "2. Verify NAT rules for proper translation",
+                "3. Review security rules for Salesforce application",
+                "4. Test connectivity after changes",
+            ],
+            "impact": "Medium - Affects user productivity",
+            "one_click_remediation": "Strata Copilot can adjust decryption settings automatically",
+        }
+    
+    return None
+
+
+# ============================================================================
+# UI COMPONENTS
+# ============================================================================
+def render_header():
+    st.title("🛡️ Strata Copilot - NGFW AI Assistant")
+    st.caption("Powered by Precision AI | Natural language policy management, threat analysis, and troubleshooting")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Demo Time", "< 12 min", "Target")
+    col2.metric("Response Time", "< 5 sec", "Avg query")
+    col3.metric("Accuracy", "100%", "Demo scenarios")
+    col4.metric("Uptime", "99%", "Presentations")
+
+
+def render_personas():
+    st.markdown("### Target Personas")
+    personas = [
+        {"name": "SOC Analyst (Alex)", "role": "5+ years experience", "needs": "Fast threat resolution, alert explanations"},
+        {"name": "Network Admin (Jordan)", "role": "Mid-level", "needs": "AI-suggested policies, best practices"},
+        {"name": "Executive (CISO Taylor)", "role": "Strategic oversight", "needs": "Quick security posture insights"},
+    ]
+    cols = st.columns(3)
+    for idx, persona in enumerate(personas):
+        with cols[idx]:
+            st.write(f"**{persona['name']}**")
+            st.caption(f"{persona['role']}")
+            st.caption(f"*{persona['needs']}*")
+
+
+def render_policy_creation_tab():
+    st.subheader("Policy Creation and Modification")
+    st.caption("Use natural language to generate, preview, and modify NGFW security policies")
+    
+    preset_scenarios = [
+        "Create an App-ID based rule for developers accessing GitHub from dev subnet, blocking other web traffic",
+        "Allow marketing team to access Salesforce with SSL",
+        "Create a rule for engineering to access AWS S3 buckets",
+    ]
+    
+    selected_preset = st.selectbox("Quick Start Scenarios", ["Custom prompt..."] + preset_scenarios)
+    
+    if selected_preset != "Custom prompt...":
+        prompt = st.text_area("Natural Language Prompt", value=selected_preset, height=100)
+    else:
+        prompt = st.text_area("Natural Language Prompt", placeholder="E.g., Create an App-ID based rule for developers accessing GitHub from dev subnet, blocking other web traffic", height=100)
+    
+    if st.button("Generate Policy", type="primary", use_container_width=True):
+        with st.spinner("Precision AI is generating your policy..."):
+            policy = generate_policy_from_nl(prompt)
+            
+            st.success("Policy generated successfully!")
+            
+            st.markdown("#### Policy Preview")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.json({
+                    "Rule Name": policy["rule_name"],
+                    "Source Zone": policy["source_zone"],
+                    "Destination Zone": policy["destination_zone"],
+                    "Source Address": policy["source_address"],
+                    "Destination Address": policy["destination_address"],
+                    "Application": policy["application"],
+                    "Action": policy["action"],
+                    "Profile": policy["profile"],
+                })
+            with col2:
+                st.markdown("**Explanation**")
+                st.info(policy["explanation"])
+            
+            st.markdown("#### Commit-Ready Configuration")
+            st.code(policy["xml_config"], language="xml")
+            
+            st.markdown("#### Best Practice Assessment")
+            violations = [v for v in BEST_PRACTICE_VIOLATIONS if "any" in policy["application"].lower()]
+            if violations:
+                for v in violations:
+                    st.warning(f"⚠️ {v['Violation']}: {v['Recommendation']}")
+            else:
+                st.success("✅ Policy follows best practices - uses App-ID filtering")
+            
+            col1, col2, col3 = st.columns(3)
+            if col1.button("Preview Changes", use_container_width=True):
+                st.toast("Preview mode - no changes committed")
+            if col2.button("Commit to NGFW", type="primary", use_container_width=True):
+                st.toast("Policy committed successfully to NGFW")
+            if col3.button("Modify Policy", use_container_width=True):
+                st.toast("Modify mode enabled")
+
+
+def render_alert_analysis_tab():
+    st.subheader("Alert Explanation and Threat Analysis")
+    st.caption("Explain NGFW alerts in plain English with threat patterns and remediation")
+    
+    logs_df = load_threat_logs()
+    
+    query = st.text_input(
+        "Ask about threats",
+        placeholder="E.g., Explain threat log TH-2025-11-16-001 or Show blocked C2 attempts last week",
+    )
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Show all critical threats", use_container_width=True):
+            st.session_state.alert_query = "critical threats"
+    with col2:
+        if st.button("Show C2 attempts", use_container_width=True):
+            st.session_state.alert_query = "C2 attempts"
+    
+    query = st.session_state.get("alert_query", query) if "alert_query" in st.session_state else query
+    
+    if query:
+        query_lower = query.lower()
+        
+        if "th-" in query_lower or "log" in query_lower:
+            log_id = None
+            for lid in logs_df["Log ID"].values:
+                if lid.lower() in query_lower:
+                    log_id = lid
+                    break
+            
+            if log_id:
+                explanation = explain_threat_log(log_id, logs_df)
+                
+                st.markdown("#### Threat Explanation")
+                st.info(explanation["summary"])
+                st.write(explanation["what_happened"])
+                
+                st.markdown("#### Threat Details")
+                st.json(explanation["threat_details"])
+                
+                st.markdown("#### False Positive Check")
+                if "false positive" in explanation["false_positive_check"].lower():
+                    st.warning(explanation["false_positive_check"])
+                else:
+                    st.success(explanation["false_positive_check"])
+                
+                st.markdown("#### Remediation Steps")
+                for step in explanation["remediation"]:
+                    st.write(f"- {step}")
+                
+                st.markdown("#### Pattern Analysis")
+                st.info(explanation["pattern_analysis"])
+            else:
+                st.error("Log ID not found. Try: TH-2025-11-16-001")
+        
+        elif "c2" in query_lower or "command" in query_lower:
+            c2_logs = logs_df[logs_df["Threat Type"].str.contains("C2", case=False)]
+            st.markdown("#### C2 Attempts Detected")
+            st.dataframe(c2_logs[["Log ID", "Timestamp", "Severity", "Source IP", "Description"]], use_container_width=True, hide_index=True)
+            st.metric("Total C2 Attempts", len(c2_logs), "Last 7 days")
+        
+        elif "critical" in query_lower:
+            critical_logs = logs_df[logs_df["Severity"] == "Critical"]
+            st.markdown("#### Critical Threats")
+            st.dataframe(critical_logs[["Log ID", "Timestamp", "Threat Type", "Source IP", "Description"]], use_container_width=True, hide_index=True)
+            st.metric("Critical Threats", len(critical_logs), "Last 7 days")
+        
+        else:
+            st.info("Showing all recent threats")
+            st.dataframe(logs_df, use_container_width=True, hide_index=True)
+    
+    st.markdown("---")
+    st.markdown("#### Threat Timeline (Last 7 Days)")
+    timeline_data = logs_df.groupby(["Threat Type", "Severity"]).size().reset_index(name="Count")
+    st.bar_chart(timeline_data.set_index("Threat Type"))
+
+
+def render_troubleshooting_tab():
+    st.subheader("Configuration Troubleshooting")
+    st.caption("Diagnose and resolve NGFW config issues via guided natural language interactions")
+    
+    issues = load_config_issues()
+    
+    preset_issues = [issue["Issue"] for issue in issues] + ["Custom query..."]
+    selected_issue = st.selectbox("Common Issues", preset_issues)
+    
+    if selected_issue != "Custom query...":
+        query = st.text_area("Describe the issue", value=selected_issue, height=100)
+    else:
+        query = st.text_area("Describe the issue", placeholder="E.g., Marketing zone users can't access Salesforce - check policies and NAT", height=100)
+    
+    if st.button("Troubleshoot", type="primary", use_container_width=True):
+        diagnosis = troubleshoot_issue(query, issues)
+        
+        if diagnosis:
+            st.markdown("#### Diagnosis")
+            st.error(diagnosis["diagnosis"])
+            
+            st.markdown("#### Symptoms")
+            for symptom in diagnosis["symptoms"]:
+                st.write(f"- {symptom}")
+            
+            st.markdown("#### Affected Configuration")
+            st.info(f"Rule/Policy: {diagnosis['affected_rule']}")
+            st.warning(f"Impact: {diagnosis['impact']}")
+            
+            st.markdown("#### Fix Steps")
+            for step in diagnosis["fix_steps"]:
+                st.write(step)
+            
+            st.markdown("#### One-Click Remediation")
+            st.success(diagnosis["one_click_remediation"])
+            
+            col1, col2 = st.columns(2)
+            if col1.button("Apply Fix Automatically", type="primary", use_container_width=True):
+                st.toast("Fix applied successfully - connectivity restored")
+            if col2.button("Review Changes First", use_container_width=True):
+                st.toast("Review mode - changes pending approval")
+        else:
+            st.info("No specific issue matched. Reviewing general troubleshooting steps...")
+            st.write("1. Check security rules for blocking policies")
+            st.write("2. Verify NAT configuration")
+            st.write("3. Review decryption settings")
+            st.write("4. Check routing and zone configuration")
+
+
+def render_insights_tab():
+    st.subheader("Proactive Insights & Best Practices")
+    st.caption("Personalized recommendations and configuration health checks")
+    
+    st.markdown("#### Welcome Insights")
+    st.info("💡 **Suggested Topics**: Review critical threats from last week | Optimize overly permissive policies | Check decryption performance")
+    
+    st.markdown("#### Best Practice Violations")
+    violations_df = pd.DataFrame(BEST_PRACTICE_VIOLATIONS)
+    st.dataframe(violations_df[["Violation", "Rule", "Severity", "Recommendation"]], use_container_width=True, hide_index=True)
+    
+    st.markdown("#### Security Posture Summary")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Policies", len(load_policies()))
+    col2.metric("Best Practice Violations", len(BEST_PRACTICE_VIOLATIONS), delta="-2 from last week")
+    col3.metric("Threats Blocked (7d)", len(load_threat_logs()), delta="+3 vs last week")
+    
+    st.markdown("#### Top Recommendations")
+    recommendations = [
+        "Replace 'any' application in allow-internet rule with specific App-IDs",
+        "Enable App-ID for better visibility and control",
+        "Migrate FTP to SFTP for encrypted file transfer",
+        "Review decryption performance on PA-220",
+    ]
+    for rec in recommendations:
+        st.write(f"- {rec}")
+
+
+# ============================================================================
+# MAIN APPLICATION
+# ============================================================================
+def main():
+    st.set_page_config(
+        page_title="Strata Copilot Demo",
+        page_icon="🛡️",
+        layout="wide",
+    )
+    
+    render_header()
+    render_personas()
+    
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "Policy Creation",
+        "Alert Analysis",
+        "Troubleshooting",
+        "Proactive Insights",
+    ])
+    
+    with tab1:
+        render_policy_creation_tab()
+    with tab2:
+        render_alert_analysis_tab()
+    with tab3:
+        render_troubleshooting_tab()
+    with tab4:
+        render_insights_tab()
+    
+    st.markdown("---")
+    st.caption(
+        f"Demo refreshed {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')} · "
+        "All data synthetic · Powered by Precision AI · PAN-OS 10.2+ compatible"
+    )
+
+
+if __name__ == "__main__":
+    main()
+
